@@ -126,8 +126,11 @@ not a cryptographic secret.
   cancelling a pending auto-login) — all passing on kara-box
   (`cargo test`, Rust 1.99.0).
 - `tools/package.py`: produces `target/autologin-1.0.0.hnmod` (11 files,
-  12,625 bytes, sha256
-  `4563576585b459872ad25ae31e0ab3462ef5c5239ec681da5e8f2d661cbd88e3`).
+  12,495 bytes, sha256
+  `d94dc2d72480294903ebbd2b0eafffcb13e9b736143cd7b89e0a6233765e9c5e`).
+  The same build runs in GitHub Actions on every `v*` tag and attaches the
+  `.hnmod` to the release — the asset on the release page is byte-identical
+  to a local rebuild from these sources.
 - The `.hnmod` builds through the Starling 0.8.0 build server on kara-box:
   job `0632d26e06dd1aa7491df2c1` → `{"state": "done", "sha256":
   "dc142a8df75c2814b9c744ddc51ba41be97f93b2af8ab312c82c416ae6434ced",
