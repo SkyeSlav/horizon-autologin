@@ -592,7 +592,7 @@ fn reset() {
 mod tests {
     use super::*;
 
-    const KEY: Option<(&str, &str)> = Some(("play.example.net:25565", "Skye"));
+    const KEY: Option<(&str, &str)> = Some(("play.example.net:25565", "Player"));
 
     fn setup() {
         reset();
@@ -614,7 +614,7 @@ mod tests {
         setup();
         let out = command(KEY, "autologin set hunter2").unwrap();
         assert!(out.lines.iter().any(|l| l.contains("saved")));
-        note_chat("play.example.net:25565", "Skye", "Please /login to continue!");
+        note_chat("play.example.net:25565", "Player", "Please /login to continue!");
         let sends = run_ticks(25);
         assert_eq!(sends, vec!["login hunter2".to_string()]);
     }
@@ -623,7 +623,7 @@ mod tests {
     fn delay_is_respected() {
         setup();
         command(KEY, "autologin set hunter2").unwrap();
-        note_chat("play.example.net:25565", "Skye", "please login");
+        note_chat("play.example.net:25565", "Player", "please login");
         // 1s delay = 20 ticks; the prompt is scheduled on tick 1, due on 21.
         assert!(run_ticks(20).is_empty());
         assert_eq!(run_ticks(1), vec!["login hunter2".to_string()]);
@@ -632,7 +632,7 @@ mod tests {
     #[test]
     fn auto_register_when_no_password() {
         setup();
-        note_chat("play.example.net:25565", "Skye", "Please /register to play");
+        note_chat("play.example.net:25565", "Player", "Please /register to play");
         let sends = run_ticks(25);
         assert_eq!(sends.len(), 1);
         let parts: Vec<&str> = sends[0].split_whitespace().collect();
@@ -642,14 +642,14 @@ mod tests {
         assert_eq!(parts[1].len(), 6);
         assert!(parts[1].chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()));
         // The generated password is saved for the next login.
-        assert!(state().password("play.example.net:25565", "Skye").is_some());
+        assert!(state().password("play.example.net:25565", "Player").is_some());
     }
 
     #[test]
     fn login_beats_register_when_password_saved() {
         setup();
         command(KEY, "autologin set hunter2").unwrap();
-        note_chat("play.example.net:25565", "Skye", "please /login or /register");
+        note_chat("play.example.net:25565", "Player", "please /login or /register");
         let sends = run_ticks(25);
         assert_eq!(sends, vec!["login hunter2".to_string()]);
     }
@@ -658,14 +658,14 @@ mod tests {
     fn once_per_join_then_again_after_rejoin() {
         setup();
         command(KEY, "autologin set hunter2").unwrap();
-        note_chat("play.example.net:25565", "Skye", "please login");
+        note_chat("play.example.net:25565", "Player", "please login");
         assert_eq!(run_ticks(25), vec!["login hunter2".to_string()]);
         // Same join: a new prompt does not send again.
-        note_chat("play.example.net:25565", "Skye", "please login");
+        note_chat("play.example.net:25565", "Player", "please login");
         assert!(run_ticks(25).is_empty());
         // Leave and rejoin: it sends again.
         assert!(tick(None).send.is_none());
-        note_chat("play.example.net:25565", "Skye", "please login");
+        note_chat("play.example.net:25565", "Player", "please login");
         assert_eq!(run_ticks(25), vec!["login hunter2".to_string()]);
     }
 
@@ -673,7 +673,7 @@ mod tests {
     fn prompt_from_another_server_is_ignored() {
         setup();
         command(KEY, "autologin set hunter2").unwrap();
-        note_chat("other.example.net", "Skye", "please login");
+        note_chat("other.example.net", "Player", "please login");
         assert!(run_ticks(25).is_empty());
     }
 
@@ -681,7 +681,7 @@ mod tests {
     fn pattern_matching_is_case_insensitive() {
         setup();
         command(KEY, "autologin set hunter2").unwrap();
-        note_chat("play.example.net:25565", "Skye", "PLEASE LOGIN NOW");
+        note_chat("play.example.net:25565", "Player", "PLEASE LOGIN NOW");
         assert_eq!(run_ticks(25), vec!["login hunter2".to_string()]);
     }
 
@@ -743,11 +743,11 @@ mod tests {
         command(KEY, "autologin delay 0").unwrap();
         assert_eq!(state().config.delay_seconds, 0);
         command(KEY, "autologin set hunter2").unwrap();
-        note_chat("play.example.net:25565", "Skye", "type /login now");
+        note_chat("play.example.net:25565", "Player", "type /login now");
         assert_eq!(run_ticks(1), vec!["login hunter2".to_string()]);
         // The old pattern no longer matches.
         assert!(tick(None).send.is_none());
-        note_chat("play.example.net:25565", "Skye", "please login");
+        note_chat("play.example.net:25565", "Player", "please login");
         assert!(run_ticks(5).is_empty());
     }
 
@@ -760,10 +760,10 @@ mod tests {
             .find(|(k, _)| k == KEY_PASSWORDS)
             .map(|(_, v)| v)
             .unwrap();
-        assert_eq!(stored, "play.example.net:25565|Skye|hunter2");
+        assert_eq!(stored, "play.example.net:25565|Player|hunter2");
         reset();
         load(&|k| if k == KEY_PASSWORDS { Some(stored.clone()) } else { None });
-        assert_eq!(state().password("play.example.net:25565", "Skye"), Some("hunter2"));
+        assert_eq!(state().password("play.example.net:25565", "Player"), Some("hunter2"));
     }
 
     #[test]
@@ -795,7 +795,7 @@ mod tests {
         assert!(!state().config.autodetect_login);
         // With auto-login off, a login prompt does nothing.
         command(KEY, "autologin set hunter2").unwrap();
-        note_chat("play.example.net:25565", "Skye", "please login");
+        note_chat("play.example.net:25565", "Player", "please login");
         assert!(run_ticks(25).is_empty());
     }
 
@@ -803,7 +803,7 @@ mod tests {
     fn manual_login_cancels_a_pending_auto_login() {
         setup();
         command(KEY, "autologin set hunter2").unwrap();
-        note_chat("play.example.net:25565", "Skye", "please login");
+        note_chat("play.example.net:25565", "Player", "please login");
         assert!(run_ticks(5).is_empty()); // still in the delay
         let out = command(KEY, "autologin").unwrap();
         assert_eq!(out.send.as_deref(), Some("login hunter2"));

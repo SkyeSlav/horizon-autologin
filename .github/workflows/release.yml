@@ -1,7 +1,7 @@
 name: Release
 # Builds the .hnmod from source (pure Python, no Rust needed) and attaches
 # it to the release for the tag. The .hnmod is a source-only zip; the game
-# build happens on the user's own Starling build server, not here.
+# build happens in Starling, not here.
 on:
   workflow_dispatch:
     inputs:
