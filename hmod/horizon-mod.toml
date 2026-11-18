@@ -1,0 +1,15 @@
+id = "autologin"
+name = "Auto Login"
+version = "1.1.0"
+description = "Detects login/register prompts in chat and logs you in or registers you, per server."
+authors = ["SkyeSlav"]
+# A native mod: Rust in src/, compiled by the launcher against the game build [native] pins, beside data/ and assets/.
+api = "0.2"
+side = "client"
+# registries: "May add blocks, items, mob effects and entity types to your worlds".
+capabilities = ["registries"]
+
+[native]
+game = "26.3"
+horizon = "0b14f8acfd97fa2c750e42795249dcc981178ca4"
+mixins = "e59da9094f0c2fdda6c627fe9eff22dec6a906f0"

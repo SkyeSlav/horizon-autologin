@@ -1,7 +1,10 @@
 name: Release
-# Builds the .hnmod from source (pure Python, no Rust needed) and attaches
-# it to the release for the tag. The .hnmod is a source-only zip; the game
-# build happens in Starling, not here.
+# Builds the release files from source and attaches them to the release
+# for the tag:
+# - the .hnmod (Starling, 1.0.0 line only) is a source-only zip built with
+#   pure Python; the game build happens in Starling, not here.
+# - the .hmod (Horizon launcher / registry, 1.1.0+) is built with
+#   cargo-horizon-mod against the SDK the manifest pins.
 on:
   workflow_dispatch:
     inputs:
@@ -13,7 +16,10 @@ on:
     tags: ["v*"]
 
 jobs:
-  build:
+  build-hnmod:
+    # The .hnmod line is frozen at 1.0.0 for Starling; later tags ship the
+    # .hmod only.
+    if: ${{ startsWith(inputs.tag || github.ref_name, 'v1.0.') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -27,3 +33,29 @@ jobs:
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
           files: target/*.hnmod
+
+  build-hmod:
+    if: ${{ !startsWith(inputs.tag || github.ref_name, 'v1.0.') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99.1"
+      # Pinned to the tool revision this release was built and checked
+      # with, so a later tool change cannot silently change the package.
+      - run: cargo install --locked --git https://github.com/horizon-rust/horizon --rev 5a5aca6b21c7d8af9f7890a43a835cc06e4c21bf cargo-horizon-mod
+      # The build fetches the pinned SDK into hmod/.horizon/sdk/ itself.
+      - run: cd hmod && cargo horizon-mod build
+      - run: cd hmod && cargo horizon-mod check target/horizon-mod/autologin.hmod
+      - run: cd hmod && cargo test -- --test-threads=1
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          body: |
+            Native .hmod build for the Horizon launcher and registry — the same auto-login / auto-register behaviour as 1.0.0, rebuilt on the new mod API.
+
+            Starling users: stay on 1.0.0 (.hnmod) — Starling 0.8.0 cannot load .hmod files.
+          files: hmod/target/horizon-mod/*.hmod
