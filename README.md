@@ -13,7 +13,7 @@ login/register prompts in chat and logs you in or registers you.
 
 > **Releases:** grab the ready-built files from the
 > [latest release](https://github.com/SkyeSlav/horizon-autologin/releases/latest)
-> — no build needed. `autologin-1.1.0.hmod` is for the Horizon launcher
+> — no build needed. `autologin.hmod` is for the Horizon launcher
 > (0.2.70+); `autologin-1.0.0.hnmod` is for Starling 0.8.0.
 
 - **Auto Login Detection** — watches incoming chat for the login prompt and
