@@ -3,7 +3,7 @@
 # newest release tag.
 name = "Auto Login"
 summary = "Detects login/register prompts in chat and logs you in or registers you, per server."
-description = """Auto Login watches the chat for login and register prompts and acts on them: when the server asks you to log in, it sends /login with the password saved for that server and player; when the server asks you to register and no password is saved, it generates a random password, sends /register, and saves it for next time.
+description = """Auto Login watches for login and register prompts — in chat and in the action bar — and acts on them: when the server asks you to log in, it sends /login with the password saved for that server and player; when the server asks you to register and no password is saved, it generates a random password, sends /register, and saves it for next time.
 
 Manual commands /autologin and /autoregister do the same on demand, and /autologin set, pattern, delay, toggle and status configure it without rebuilding.
 

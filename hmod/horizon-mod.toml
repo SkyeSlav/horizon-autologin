@@ -1,6 +1,6 @@
 id = "autologin"
 name = "Auto Login"
-version = "1.1.0"
+version = "1.1.1"
 description = "Detects login/register prompts in chat and logs you in or registers you, per server."
 authors = ["SkyeSlav"]
 # A native mod: Rust in src/, compiled by the launcher against the game build [native] pins, beside data/ and assets/.

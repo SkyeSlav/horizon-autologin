@@ -1,9 +1,9 @@
 name: Release
 # Builds the release files from source and attaches them to the release
-# for the tag:
-# - the .hnmod (Starling, 1.0.0 line only) is a source-only zip built with
-#   pure Python; the game build happens in Starling, not here.
-# - the .hmod (Horizon launcher / registry, 1.1.0+) is built with
+# for the tag. Every v* tag ships both formats:
+# - the .hnmod (Starling) is a source-only zip built with pure Python; the
+#   game build happens in Starling, not here.
+# - the .hmod (Horizon launcher / registry) is built with
 #   cargo-horizon-mod against the SDK the manifest pins.
 on:
   workflow_dispatch:
@@ -11,15 +11,12 @@ on:
       tag:
         description: "Release tag to attach the build to"
         required: true
-        default: "v1.0.0"
+        default: "v1.1.1"
   push:
     tags: ["v*"]
 
 jobs:
   build-hnmod:
-    # The .hnmod line is frozen at 1.0.0 for Starling; later tags ship the
-    # .hmod only.
-    if: ${{ startsWith(inputs.tag || github.ref_name, 'v1.0.') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -35,7 +32,6 @@ jobs:
           files: target/*.hnmod
 
   build-hmod:
-    if: ${{ !startsWith(inputs.tag || github.ref_name, 'v1.0.') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -55,7 +51,7 @@ jobs:
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
           body: |
-            Native .hmod build for the Horizon launcher and registry — the same auto-login / auto-register behaviour as 1.0.0, rebuilt on the new mod API.
+            1.1.1 detects login/register prompts in more places: the .hnmod now also reads title, subtitle and action-bar prompts, and the .hmod now also reads action-bar (overlay) chat lines. Title text has no hook in the mod API, so a title-only prompt is caught by the .hnmod only.
 
-            Starling users: stay on 1.0.0 (.hnmod) — Starling 0.8.0 cannot load .hmod files.
+            Starling users: take `autologin-1.1.1.hnmod` — Starling 0.8.0 cannot load .hmod files. Horizon launcher users: take `autologin.hmod`.
           files: hmod/target/horizon-mod/*.hmod

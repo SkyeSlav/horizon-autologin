@@ -2,7 +2,11 @@
 //! feed the pure-logic engine in `engine.rs`.
 //!
 //! The engine keeps all state behind one mutex; the hooks do the game's I/O:
-//! - `client_chat_received` notes chat lines for pattern matching,
+//! - `client_chat_received` notes chat lines for pattern matching — overlay
+//!   (action-bar) lines included, since some servers prompt there instead
+//!   of chat. Title text has no hook in the mod API, so a title-only
+//!   prompt is out of this build's reach (the .hnmod reads those packets
+//!   directly and covers it).
 //! - `client_tick_pre` runs the delay and sends the login/register command,
 //! - `command` answers the mod's own `/autologin` and `/autoregister`,
 //! - `register` declares the four settings on the mod's page in Options > Mods,
@@ -186,7 +190,7 @@ impl Hooks for Mod {
         host: &mut dyn ClientHost,
         event: &mut ClientChatReceivedEvent<'_>,
     ) -> Flow {
-        if !host.on(engine::ID) || event.overlay {
+        if !host.on(engine::ID) {
             return Flow::Continue;
         }
         let Some((server, player)) = current_key(host, &self.identity) else {

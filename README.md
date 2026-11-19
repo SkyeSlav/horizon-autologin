@@ -9,15 +9,19 @@
 </p>
 
 Auto Login & Auto Register as a native Horizon mod (Rust): detects
-login/register prompts in chat and logs you in or registers you.
+login/register prompts in chat, in title text and in the action bar, and
+logs you in or registers you.
 
 > **Releases:** grab the ready-built files from the
 > [latest release](https://github.com/SkyeSlav/horizon-autologin/releases/latest)
 > — no build needed. `autologin.hmod` is for the Horizon launcher
-> (0.2.70+); `autologin-1.0.0.hnmod` is for Starling 0.8.0.
+> (0.2.70+); `autologin-1.1.1.hnmod` is for Starling 0.8.0.
 
-- **Auto Login Detection** — watches incoming chat for the login prompt and
-  sends `/login` with the password saved for that server and player.
+- **Auto Login Detection** — watches incoming chat, title text and the
+  action bar for the login prompt and sends `/login` with the password
+  saved for that server and player. (The `.hmod` cannot see title text:
+  the mod API has no title hook, so a title-only prompt is caught by the
+  `.hnmod` only.)
 - **Password Storage** — saves passwords per server + player (see
   [Security](#security)).
 - **Auto Registration** — when the server asks you to register and no
@@ -35,20 +39,23 @@ Manual triggers are the slash commands `/autologin` and `/autoregister`
 
 Two builds, same behaviour, different launchers:
 
-- **1.1.0 `.hmod`** (`hmod/`): the native mod for the Horizon launcher
+- **1.1.1 `.hmod`** (`hmod/`): the native mod for the Horizon launcher
   (0.2.70+) and the registry. Pinned to Horizon Nightly 2026-11-18
   (`0b14f8ac`, game 26.3). Detection uses the typed
-  `client_chat_received` hook; passwords live in the mod's data files
+  `client_chat_received` hook, overlay (action-bar) lines included;
+  passwords live in the mod's data files
   (`horizon-mod-data/autologin/`); the settings page holds the toggles and
-  the delay.
-- **1.0.0 `.hnmod`** (`mixins/`): the Starling 0.8.0 build, pinned to
+  the delay. Title text is not visible to this build: the mod API has no
+  title hook.
+- **1.1.1 `.hnmod`** (`mixins/`): the Starling 0.8.0 build, pinned to
   Horizon `ac874422ed` (game 26.3). Horizon 0.8.0 has no stable
   incoming-chat hook, so detection injects into the game's packet handling
-  (`Game::handle_packet`, the same pattern as the voice-chat mod).
+  (`Game::handle_packet`, the same pattern as the voice-chat mod) and
+  reads chat, title, subtitle and action-bar packets directly.
 
 ## Install
 
-### Horizon launcher (`.hmod`, 1.1.0)
+### Horizon launcher (`.hmod`, 1.1.1)
 
 Build it from this repo (needs Rust 1.99+ and the `cargo-horizon-mod`
 tool; the tool fetches the pinned SDK itself):
@@ -62,17 +69,17 @@ Then put `autologin.hmod` in the instance's `horizon-mods/` folder and add
 `mod.autologin:true` to `horizon-mods.txt` in the same game folder — or run
 `horizon-launcher native-build hmod --instance "<instance>" --trust-native-code`.
 
-### Starling (`.hnmod`, 1.0.0)
+### Starling (`.hnmod`, 1.1.1)
 
 Build the `.hnmod` from this repo:
 
 ```sh
-python3 tools/package.py        # target/autologin-1.0.0.hnmod
+python3 tools/package.py        # target/autologin-1.1.1.hnmod
 ```
 
 ### Starling (Android)
 
-Add `autologin-1.0.0.hnmod` in Starling's Native mods and build with your
+Add `autologin-1.1.1.hnmod` in Starling's Native mods and build with your
 build server (Starling 0.8.0). The mod is source-only; the build server
 compiles it into the game library.
 
@@ -99,16 +106,17 @@ name when the game completes them (`/autologin ...`).
 The settings page (Options > Mods > Auto Login) has the auto-login /
 auto-register toggles, the delay (0–30s slider) and debug messages.
 Patterns are free text, so they are set with the commands above. (The
-1.0.0 `.hnmod` page has the same toggles as buttons and cycles the delay
+1.1.1 `.hnmod` page has the same toggles as buttons and cycles the delay
 through 0, 1, 2, 3, 5s.)
 
 ## How it works
 
-- A prompt is a chat line containing the pattern (case-insensitive).
-  Login prompts come as SystemChat from auth plugins; PlayerChat and
-  DisguisedChat are watched too. The `.hmod` reads them through the
-  `client_chat_received` hook; the `.hnmod` injects into the game's packet
-  handling.
+- A prompt is a line containing the pattern (case-insensitive): a chat
+  line, a title or subtitle, or an action-bar line. Login prompts come as
+  SystemChat from auth plugins; PlayerChat and DisguisedChat are watched
+  too. The `.hmod` reads them through the `client_chat_received` hook
+  (chat and action bar only — titles have no hook); the `.hnmod` injects
+  into the game's packet handling and reads all four.
 - After a prompt, the mod waits the delay (default 1s), then sends
   `/login <password>` (if one is saved) or `/register <password> <password>`
   (generated, then saved). One attempt per join: after sending, it stops
@@ -135,10 +143,10 @@ not a cryptographic secret.
 
 ## Layout
 
-- `hmod/`: the 1.1.0 native `.hmod` (Rust crate on the mod API):
+- `hmod/`: the 1.1.1 native `.hmod` (Rust crate on the mod API):
   `src/engine.rs` is the shared logic with its unit tests,
   `src/lib.rs` the hooks, `horizon-mod.toml` the manifest and pins.
-- `mixins/autologin/engine/`: the 1.0.0 mod's own crate (std only), with
+- `mixins/autologin/engine/`: the 1.1.1 mod's own crate (std only), with
   its unit tests — prompts, delay, once-per-join, commands, password
   storage. Same logic as `hmod/src/engine.rs`, adapted to the old
   settings storage.
