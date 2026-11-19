@@ -46,12 +46,18 @@ jobs:
       # The build fetches the pinned SDK into hmod/.horizon/sdk/ itself.
       - run: cd hmod && cargo horizon-mod build
       - run: cd hmod && cargo horizon-mod check target/horizon-mod/autologin.hmod
+      # The tool names its output after the mod id; the release names it
+      # with the version, like the .hnmod.
+      - run: |
+          tag="${{ inputs.tag || github.ref_name }}"
+          echo "VERSION=${tag#v}" >> "$GITHUB_ENV"
+          mv hmod/target/horizon-mod/autologin.hmod "hmod/target/horizon-mod/autologin-${tag#v}.hmod"
       - run: cd hmod && cargo test -- --test-threads=1
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
           body: |
-            1.1.1 detects login/register prompts in more places: the .hnmod now also reads title, subtitle and action-bar prompts, and the .hmod now also reads action-bar (overlay) chat lines. Title text has no hook in the mod API, so a title-only prompt is caught by the .hnmod only.
+            ${{ env.VERSION }} detects login/register prompts in more places: the .hnmod now also reads title, subtitle and action-bar prompts, and the .hmod now also reads action-bar (overlay) chat lines. Title text has no hook in the mod API, so a title-only prompt is caught by the .hnmod only.
 
-            Starling users: take `autologin-1.1.1.hnmod` — Starling 0.8.0 cannot load .hmod files. Horizon launcher users: take `autologin.hmod`.
+            Starling users: take `autologin-${{ env.VERSION }}.hnmod` — Starling 0.8.0 cannot load .hmod files. Horizon launcher users: take `autologin-${{ env.VERSION }}.hmod`.
           files: hmod/target/horizon-mod/*.hmod

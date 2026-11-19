@@ -14,7 +14,7 @@ logs you in or registers you.
 
 > **Releases:** grab the ready-built files from the
 > [latest release](https://github.com/SkyeSlav/horizon-autologin/releases/latest)
-> — no build needed. `autologin.hmod` is for the Horizon launcher
+> — no build needed. `autologin-1.1.1.hmod` is for the Horizon launcher
 > (0.2.70+); `autologin-1.1.1.hnmod` is for Starling 0.8.0.
 
 - **Auto Login Detection** — watches incoming chat, title text and the
@@ -65,7 +65,9 @@ cargo install --locked --git https://github.com/horizon-rust/horizon cargo-horiz
 cd hmod && cargo horizon-mod build   # target/horizon-mod/autologin.hmod
 ```
 
-Then put `autologin.hmod` in the instance's `horizon-mods/` folder and add
+Then put `autologin-1.1.1.hmod` (the release file; a local build produces
+`autologin.hmod` — same file, rename it if you like) in the instance's
+`horizon-mods/` folder and add
 `mod.autologin:true` to `horizon-mods.txt` in the same game folder — or run
 `horizon-launcher native-build hmod --instance "<instance>" --trust-native-code`.
 
