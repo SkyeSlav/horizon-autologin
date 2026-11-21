@@ -11,7 +11,7 @@ on:
       tag:
         description: "Release tag to attach the build to"
         required: true
-        default: "v1.1.1"
+        default: "v1.1.2"
   push:
     tags: ["v*"]
 

@@ -7,6 +7,12 @@
 //!   of chat. Title text has no hook in the mod API, so a title-only
 //!   prompt is out of this build's reach (the .hnmod reads those packets
 //!   directly and covers it).
+//! - `customize_boss_event_progress` notes the boss bar's name for the same
+//!   matching, since some servers prompt there instead of chat. The hook
+//!   fires once a frame per bar, so only a changed bar is noted.
+//! - `register_client_commands` declares `/autologin` and `/autoregister`
+//!   (with their subcommands) to the chat tree, so they colour and
+//!   complete instead of showing red while typing.
 //! - `client_tick_pre` runs the delay and sends the login/register command,
 //! - `command` answers the mod's own `/autologin` and `/autoregister`,
 //! - `register` declares the four settings on the mod's page in Options > Mods,
@@ -21,8 +27,9 @@
 
 use mod_api::{
     self, ClientChatReceivedEvent, ClientHost, ClientPlayerLoggingInEvent, ClientTickPreEvent,
-    CommandEvent, ConfigPath, Flow, Hooks, RegistrationContext, Registrar, SettingChangedEvent,
-    SettingSpec, Text,
+    Command, CommandEvent, ConfigPath, CustomizeBossEventProgressEvent, Flow, Hooks,
+    RegisterClientCommandsEvent, RegistrationContext, Registrar, SettingChangedEvent, SettingSpec,
+    Text,
 };
 use std::collections::BTreeMap;
 use std::sync::Mutex;
@@ -46,6 +53,9 @@ struct Mod {
     /// (local player's UUID from `client_player_logging_in`, resolved profile
     /// name once the tab list shows it).
     identity: Mutex<(Option<u128>, Option<String>)>,
+    /// (UUID, plain name) of the boss bar last noted, so the per-frame
+    /// boss-bar hook only wakes the engine when the bar changes.
+    last_boss_bar: Mutex<Option<(u128, String)>>,
 }
 
 /// One data file as text, if it exists and is UTF-8.
@@ -183,6 +193,57 @@ impl Hooks for Mod {
             1.0,
         ));
         let _ = r.register_setting(SettingSpec::toggle("show_debug", "Debug messages", false));
+    }
+
+    fn register_client_commands(
+        &self,
+        _host: &mut dyn ClientHost,
+        event: &mut RegisterClientCommandsEvent<'_>,
+    ) {
+        // The usages the engine answers, so the chat box colours, completes
+        // and lists them as the game's own instead of showing red.
+        event.commands.push(Command::new("autologin"));
+        event.commands.push(Command::new("autologin set <password:text>"));
+        event.commands.push(Command::new("autologin status"));
+        event.commands.push(Command::new("autologin help"));
+        event
+            .commands
+            .push(Command::new("autologin toggle <which:word>"));
+        event
+            .commands
+            .push(Command::new("autologin delay <seconds:integer>"));
+        event.commands.push(Command::new(
+            "autologin pattern <which:word> <pattern:text>",
+        ));
+        event.commands.push(Command::new("autoregister"));
+    }
+
+    fn customize_boss_event_progress(
+        &self,
+        host: &dyn ClientHost,
+        event: &mut CustomizeBossEventProgressEvent<'_>,
+    ) -> Flow {
+        if !host.on(engine::ID) {
+            return Flow::Continue;
+        }
+        let Ok(text) = host.text_string(&event.bar.name) else {
+            return Flow::Continue;
+        };
+        let Some((server, player)) = current_key(host, &self.identity) else {
+            return Flow::Continue;
+        };
+        let seen = (event.bar.uuid, text.clone());
+        {
+            let mut last = self.last_boss_bar.lock().unwrap_or_else(|e| e.into_inner());
+            if *last == Some(seen.clone()) {
+                return Flow::Continue;
+            }
+            *last = Some(seen);
+        }
+        load(host);
+        engine::note_chat(&server, &player, &text);
+        persist(host);
+        Flow::Continue
     }
 
     fn client_chat_received(
