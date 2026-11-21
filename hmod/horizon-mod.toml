@@ -1,8 +1,12 @@
 id = "autologin"
 name = "Auto Login"
-version = "1.1.2"
+version = "1.1.3"
 description = "Detects login/register prompts in chat, in the action bar and on the boss bar, and logs you in or registers you, per server."
 authors = ["SkyeSlav"]
+license = "MIT"
+license_url = "https://github.com/SkyeSlav/horizon-autologin/blob/main/LICENSE"
+homepage = "https://github.com/SkyeSlav/horizon-autologin"
+issues = "https://github.com/SkyeSlav/horizon-autologin/issues"
 # A native mod: Rust in src/, compiled by the launcher against the game build [native] pins, beside data/ and assets/.
 api = "0.2"
 side = "client"

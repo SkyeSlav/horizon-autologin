@@ -9,7 +9,9 @@
 //!   directly and covers it).
 //! - `customize_boss_event_progress` notes the boss bar's name for the same
 //!   matching, since some servers prompt there instead of chat. The hook
-//!   fires once a frame per bar, so only a changed bar is noted.
+//!   fires once a frame per bar, so each bar is tracked separately and
+//!   only a new or changed bar is noted; the set is cleared on every
+//!   new connection.
 //! - `register_client_commands` declares `/autologin` and `/autoregister`
 //!   (with their subcommands) to the chat tree, so they colour and
 //!   complete instead of showing red while typing.
@@ -18,6 +20,7 @@
 //! - `register` declares the four settings on the mod's page in Options > Mods,
 //! - `client_player_logging_in` resets per connection and remembers the
 //!   local player's UUID, so the profile name can be read from the tab list.
+//!   It also clears the boss bars seen on the previous connection.
 //!
 //! The four registered settings hold the values the settings page edits.
 //! Everything else the engine stores lives in the mod's data files
@@ -31,7 +34,7 @@ use mod_api::{
     RegisterClientCommandsEvent, RegistrationContext, Registrar, SettingChangedEvent, SettingSpec,
     Text,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Mutex;
 
 mod engine;
@@ -53,9 +56,12 @@ struct Mod {
     /// (local player's UUID from `client_player_logging_in`, resolved profile
     /// name once the tab list shows it).
     identity: Mutex<(Option<u128>, Option<String>)>,
-    /// (UUID, plain name) of the boss bar last noted, so the per-frame
-    /// boss-bar hook only wakes the engine when the bar changes.
-    last_boss_bar: Mutex<Option<(u128, String)>>,
+    /// Plain name last noted per boss-bar UUID, so the per-frame
+    /// boss-bar hook only wakes the engine when a bar is new or its
+    /// text changed. One remembered bar is not enough: with two bars
+    /// on screen they would take turns being "not the last one" and
+    /// both would be re-processed every frame.
+    seen_boss_bars: Mutex<HashMap<u128, String>>,
 }
 
 /// One data file as text, if it exists and is UTF-8.
@@ -234,11 +240,14 @@ impl Hooks for Mod {
         };
         let seen = (event.bar.uuid, text.clone());
         {
-            let mut last = self.last_boss_bar.lock().unwrap_or_else(|e| e.into_inner());
-            if *last == Some(seen.clone()) {
+            let mut seen_bars = self
+                .seen_boss_bars
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            if seen_bars.get(&seen.0) == Some(&seen.1) {
                 return Flow::Continue;
             }
-            *last = Some(seen);
+            seen_bars.insert(seen.0, seen.1);
         }
         load(host);
         engine::note_chat(&server, &player, &text);
@@ -310,6 +319,13 @@ impl Hooks for Mod {
         {
             let mut identity = self.identity.lock().unwrap_or_else(|e| e.into_inner());
             *identity = (Some(event.uuid), None);
+        }
+        {
+            let mut seen_bars = self
+                .seen_boss_bars
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            seen_bars.clear();
         }
         if !host.on(engine::ID) {
             return;
