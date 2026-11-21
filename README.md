@@ -116,6 +116,22 @@ through 0, 1, 2, 3, 5s.)
 - Sending uses the game's own command path, so commands are signed the way
   a typed command is.
 
+## Limitations
+
+- **Title and subtitle prompts are not read.** The mod API has no hook
+  for title text, so a server that prompts only via title or subtitle
+  will not trigger auto-login or auto-register. Chat, action-bar and
+  boss-bar prompts are read.
+- **Only lines containing the configured patterns count** (`login` /
+  `register` by default, case-insensitive). If the server phrases its
+  prompt differently, set the patterns to match it.
+- **One attempt per join.** After sending, the mod stops until you rejoin,
+  unless the disable-once-logged-in / disable-once-registered settings
+  are turned off.
+- **Passwords saved by the old `.hnmod` do not carry over.** The two
+  formats keep them in different folders; re-save with
+  `/autologin set <password>`.
+
 ## Security
 
 Passwords are stored **in plain text on the device**, one line per
