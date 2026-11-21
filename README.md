@@ -132,6 +132,20 @@ through 0, 1, 2, 3, 5s.)
   formats keep them in different folders; re-save with
   `/autologin set <password>`.
 
+## To do
+
+- [ ] **Auto Login 1.1.2 listed on the registry.** The release is live;
+  the registry entry is pending review of
+  [PR #1609](https://github.com/horizon-rust/horizon-mods/pull/1609).
+- [ ] **Title/subtitle read in the mod API.** Proposed in
+  [PR #19476](https://github.com/horizon-rust/horizon/pull/19476)
+  (client reads of the HUD titles and boss bars).
+- [ ] **Starling carries the hook into a release.** The API change has to
+  sync from Horizon into Starling before any mod can use it.
+- [ ] **Title prompts in a future Auto Login version.** Once the hook is
+  in Starling, a new version can read title and subtitle prompts the same
+  way it already reads chat, action-bar and boss-bar prompts.
+
 ## Security
 
 Passwords are stored **in plain text on the device**, one line per
