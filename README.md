@@ -15,7 +15,8 @@ logs you in or registers you.
 > **Releases:** grab the ready-built files from the
 > [latest release](https://github.com/SkyeSlav/horizon-autologin/releases/latest)
 > — no build needed. `autologin-1.1.2.hmod` is for the Horizon launcher
-> (0.2.70+); `autologin-1.1.2.hnmod` is for Starling 0.8.0.
+> (0.2.70+). The `.hnmod` (Starling 0.8.0) build was discontinued after
+> 1.1.1; `.hmod` only from 1.1.2.
 
 - **Auto Login Detection** — watches incoming chat, title text, the
   action bar and the boss bar for the login prompt and sends `/login` with
@@ -49,11 +50,9 @@ Two builds, same behaviour, different launchers:
   the delay. `/autologin` and `/autoregister` are declared to the chat
   tree, so they colour and complete. Title text is not visible to this
   build: the mod API has no title hook.
-- **1.1.2 `.hnmod`** (`mixins/`): the Starling 0.8.0 build, pinned to
-  Horizon `ac874422ed` (game 26.3). Horizon 0.8.0 has no stable
-  incoming-chat hook, so detection injects into the game's packet handling
-  (`Game::handle_packet`, the same pattern as the voice-chat mod) and
-  reads chat, title, subtitle and action-bar packets directly.
+- **`.hnmod` (Starling 0.8.0): discontinued after 1.1.1.** The
+  `.hnmod` build read chat, title, subtitle and action-bar packets
+  directly; it is no longer published or tested, `.hmod` only from 1.1.2.
 
 ## Install
 
@@ -72,20 +71,6 @@ Then put `autologin-1.1.2.hmod` (the release file; a local build produces
 `horizon-mods/` folder and add
 `mod.autologin:true` to `horizon-mods.txt` in the same game folder — or run
 `horizon-launcher native-build hmod --instance "<instance>" --trust-native-code`.
-
-### Starling (`.hnmod`, 1.1.2)
-
-Build the `.hnmod` from this repo:
-
-```sh
-python3 tools/package.py        # target/autologin-1.1.2.hnmod
-```
-
-### Starling (Android)
-
-Add `autologin-1.1.2.hnmod` in Starling's Native mods and build with your
-build server (Starling 0.8.0). The mod is source-only; the build server
-compiles it into the game library.
 
 ## Commands
 

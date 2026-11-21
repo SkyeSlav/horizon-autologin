@@ -1,8 +1,7 @@
 name: Release
-# Builds the release files from source and attaches them to the release
-# for the tag. Every v* tag ships both formats:
-# - the .hnmod (Starling) is a source-only zip built with pure Python; the
-#   game build happens in Starling, not here.
+# Builds the release file from source and attaches it to the release
+# for the tag. Since 1.1.2 the release ships the .hmod only (the .hnmod
+# for Starling 0.8.0 was discontinued after 1.1.1):
 # - the .hmod (Horizon launcher / registry) is built with
 #   cargo-horizon-mod against the SDK the manifest pins.
 on:
@@ -16,21 +15,6 @@ on:
     tags: ["v*"]
 
 jobs:
-  build-hnmod:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: python3 tools/package.py
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ inputs.tag || github.ref_name }}
-          files: target/*.hnmod
-
   build-hmod:
     runs-on: ubuntu-latest
     permissions:
@@ -47,7 +31,7 @@ jobs:
       - run: cd hmod && cargo horizon-mod build
       - run: cd hmod && cargo horizon-mod check target/horizon-mod/autologin.hmod
       # The tool names its output after the mod id; the release names it
-      # with the version, like the .hnmod.
+      # with the version.
       - run: |
           tag="${{ inputs.tag || github.ref_name }}"
           echo "VERSION=${tag#v}" >> "$GITHUB_ENV"
@@ -57,7 +41,7 @@ jobs:
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
           body: |
-            ${{ env.VERSION }} detects login/register prompts in more places: the .hnmod now also reads title, subtitle and action-bar prompts, and the .hmod now also reads action-bar (overlay) chat lines. Title text has no hook in the mod API, so a title-only prompt is caught by the .hnmod only.
+            ${{ env.VERSION }} reads login/register prompts on the boss bar too, and declares `/autologin` and `/autoregister` to the chat tree, so they colour and complete instead of showing red while typing. Title text still has no hook in the mod API, so a title-only prompt is out of this build's reach.
 
-            Starling users: take `autologin-${{ env.VERSION }}.hnmod` — Starling 0.8.0 cannot load .hmod files. Horizon launcher users: take `autologin-${{ env.VERSION }}.hmod`.
+            Horizon launcher users: take `autologin-${{ env.VERSION }}.hmod`.
           files: hmod/target/horizon-mod/*.hmod
