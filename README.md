@@ -1,6 +1,6 @@
 # horizon-autologin
 
-<p align="center"><img src="logo.png" alt="horizon-autologin logo: a padlock circled by two arrows" width="180"></p>
+<p align="center"><img src="logo.png" alt="horizon-autologin logo: a padlock with an amber keyhole inside a white loop on a dark background" width="180"></p>
 
 <p align="center">
   <a href="https://github.com/SkyeSlav/horizon-autologin/releases/latest"><img src="https://img.shields.io/github/v/release/SkyeSlav/horizon-autologin" alt="Latest release"></a>
