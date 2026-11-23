@@ -197,9 +197,12 @@ fn server_address(host: &dyn ClientHost) -> Option<String> {
 /// "Friend's world (Name-****)" when the friend's nameplate shows.
 /// Different Friends worlds read back as the same label, so the address
 /// is not a stable destination identifier — no credential may be keyed
-/// on it, until the SDK exposes a stable, non-secret one.
+/// on it, until the SDK exposes a stable, non-secret one. A real
+/// destination is a host:port and never contains a space, so any address
+/// with a space is a display label too — the gate fails closed if the
+/// label's wording ever changes.
 fn friends_address(address: &str) -> bool {
-    address.starts_with("Friend's world")
+    address.starts_with("Friend's world") || address.contains(' ')
 }
 
 /// The (server, player) key the engine files this connection under. The
