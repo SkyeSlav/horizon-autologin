@@ -3,7 +3,7 @@
 //! registers you with a generated password and saves it.
 //!
 //! Pure logic: on join, a saved password logs in with no prompt needed;
-the hooks in `lib.rs` call [`note_chat`] for every chat line,
+//! the hooks in `lib.rs` call [`note_chat`] for every chat line,
 //! [`tick`] once per client tick on a server, and [`command`] for the mod's
 //! own commands. All state lives behind one mutex; the hooks do the game's
 //! I/O (settings, data files, sending commands, chat lines) and hand values
