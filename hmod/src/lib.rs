@@ -342,14 +342,16 @@ impl Hooks for Mod {
         }
         let key = current_key(host, &self.identity);
         load(host);
-        // Migrate a password saved under the profile name to the
-        // account-UUID key, once the tab list has shown the name. A
-        // no-op after the move (or when nothing was saved that way):
-        // the key is the UUID exactly when it differs from the name.
+        // Migrate a password — and its consent record — saved under the
+        // profile name to the account-UUID key, once the tab list has
+        // shown the name. A no-op after the move (or when nothing was
+        // saved that way): the key is the UUID exactly when it differs
+        // from the name.
         if let Some((server, player)) = &key {
             if let Some(name) = local_player_name(host, &self.identity) {
                 if *player != name {
                     engine::migrate_password(server, &name, player);
+                    engine::migrate_consent(server, &name, player);
                 }
             }
         }

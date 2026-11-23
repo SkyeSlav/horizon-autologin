@@ -204,6 +204,10 @@ struct State {
     /// The consent notice already shown on this connection, per kind.
     asked_legacy: bool,
     asked_register: bool,
+    /// The tick of the register prompt that triggered the consent ask:
+    /// allowing still registers it after the prompt drained out of the
+    /// recent lines.
+    register_prompt: Option<u64>,
     /// Settings writes the adapter still has to persist.
     store: Vec<(String, String)>,
     tick: u64,
@@ -226,6 +230,7 @@ impl Default for State {
             staged: None,
             asked_legacy: false,
             asked_register: false,
+            register_prompt: None,
             store: Vec::new(),
             tick: 0,
             current: None,
@@ -374,6 +379,33 @@ pub fn migrate_password(server: &str, from_player: &str, to_player: &str) -> boo
     true
 }
 
+/// Move a consent record from one player key to another (a name-keyed
+/// entry to the account-UUID key), when the new key has none. Queues a
+/// store write only when something moved.
+pub fn migrate_consent(server: &str, from_player: &str, to_player: &str) -> bool {
+    if from_player == to_player {
+        return false;
+    }
+    let mut s = state();
+    if s
+        .consents
+        .iter()
+        .any(|(srv, ply)| srv == server && ply == to_player)
+    {
+        return false;
+    }
+    let Some(idx) = s
+        .consents
+        .iter()
+        .position(|(srv, ply)| srv == server && ply == from_player)
+    else {
+        return false;
+    };
+    s.consents[idx].1 = to_player.to_string();
+    s.queue_consents();
+    true
+}
+
 /// A new login event: clear the previous session's prompts, queued sends
 /// and consent asks, but NOT the attempt flags. The one-attempt limit
 /// survives a proxy reconfiguration (a new login on a backend switch or
@@ -387,6 +419,7 @@ pub fn new_connection() {
     s.staged = None;
     s.asked_legacy = false;
     s.asked_register = false;
+    s.register_prompt = None;
 }
 
 /// A chat line arrived from `server` for `player`. Only its text is kept.
@@ -429,6 +462,7 @@ pub fn tick(key: Option<(&str, &str)>) -> TickOut {
         s.staged = None;
         s.asked_legacy = false;
         s.asked_register = false;
+        s.register_prompt = None;
         s.attempted = false;
         s.join_login_done = false;
         return out;
@@ -446,6 +480,7 @@ pub fn tick(key: Option<(&str, &str)>) -> TickOut {
         s.staged = None;
         s.asked_legacy = false;
         s.asked_register = false;
+        s.register_prompt = None;
         s.pending = None;
     }
     if s.attempted {
@@ -513,10 +548,12 @@ pub fn tick(key: Option<(&str, &str)>) -> TickOut {
                     break;
                 }
                 if register_hit && s.password(server, player).is_none() {
+                    let stamp = *stamp;
                     if consented {
-                        found = Some((false, *stamp));
+                        found = Some((false, stamp));
                     } else if !s.asked_register {
                         s.asked_register = true;
+                        s.register_prompt = Some(stamp);
                         out.lines.push(format!(
                             "[AutoLogin] This server asks you to register. Allow Auto Login to register and log in on {server}? /autologin allow"
                         ));
@@ -524,8 +561,24 @@ pub fn tick(key: Option<(&str, &str)>) -> TickOut {
                     break;
                 }
             }
+            // A register prompt that already asked for consent still
+            // counts after it drained out of the recent lines: the
+            // player allowed it, so it registers now.
+            if found.is_none() {
+                if let Some(stamp) = s.register_prompt {
+                    if cfg.autodetect_register
+                        && consented
+                        && s.password(server, player).is_none()
+                    {
+                        found = Some((false, stamp));
+                    }
+                }
+            }
         }
         if let Some((login, stamp)) = found {
+            if !login {
+                s.register_prompt = None;
+            }
             let (password, template) = if login {
                 let pw = s.password(server, player).unwrap_or_default().to_string();
                 (pw, cfg.login_template.clone())
@@ -659,7 +712,7 @@ fn generate_password(cfg: &Config) -> String {
         x ^= x << 25;
         x ^= x >> 27;
         let next = x.wrapping_mul(0x2545_f491_4f6c_dd1d);
-        out.push(chars[(next >> 59) as usize % chars.len()] as char);
+        out.push(chars[(next % chars.len() as u64) as usize] as char);
     }
     out
 }
@@ -1095,6 +1148,80 @@ mod tests {
             state().password("play.example.net:25565", "Player"),
             Some("hunter2")
         );
+    }
+
+    #[test]
+    fn register_ask_survives_prompt_drain() {
+        setup();
+        note_chat("play.example.net:25565", "Player", "please register");
+        let (_, lines) = run_ticks_out(1);
+        assert!(lines
+            .iter()
+            .any(|l| l.contains("Allow Auto Login to register")));
+        // Twenty more lines drain the prompt out of `recent` (cap 16).
+        for i in 0..20 {
+            note_chat(
+                "play.example.net:25565",
+                "Player",
+                &format!("chat line {i}"),
+            );
+        }
+        command(KEY, "autologin allow").unwrap();
+        let sends = run_ticks(40);
+        assert_eq!(sends.len(), 1);
+        assert!(sends[0].starts_with("register "));
+        assert!(state()
+            .password("play.example.net:25565", "Player")
+            .is_some());
+    }
+
+    #[test]
+    fn migrate_consent_moves_name_key_to_uuid_key() {
+        setup();
+        load(&|k| {
+            if k == KEY_CONSENTS {
+                Some("play.example.net:25565|Player".to_string())
+            } else {
+                None
+            }
+        });
+        let uuid = "01234567-89ab-cdef-0123-456789abcdef";
+        assert!(migrate_consent("play.example.net:25565", "Player", uuid));
+        assert!(state().has_consent("play.example.net:25565", uuid));
+        assert!(!state().has_consent("play.example.net:25565", "Player"));
+        // A second move is a no-op.
+        assert!(!migrate_consent("play.example.net:25565", "Player", uuid));
+        // An existing UUID-keyed consent is never overwritten.
+        setup();
+        load(&|k| {
+            if k == KEY_CONSENTS {
+                Some("play.example.net:25565|Player".to_string())
+            } else {
+                None
+            }
+        });
+        state().grant_consent("play.example.net:25565", uuid);
+        assert!(!migrate_consent("play.example.net:25565", "Player", uuid));
+        assert!(state().has_consent("play.example.net:25565", uuid));
+        assert!(state().has_consent("play.example.net:25565", "Player"));
+    }
+
+    #[test]
+    fn generated_passwords_use_the_whole_charset() {
+        setup();
+        let cfg = Config::default();
+        let mut seen_high_digit = false;
+        for _ in 0..200 {
+            let pw = generate_password(&cfg);
+            assert_eq!(pw.len(), 6);
+            assert!(pw
+                .bytes()
+                .all(|b| cfg.password_chars.as_bytes().contains(&b)));
+            if pw.bytes().any(|b| (b'6'..=b'9').contains(&b)) {
+                seen_high_digit = true;
+            }
+        }
+        assert!(seen_high_digit);
     }
 
     #[test]
