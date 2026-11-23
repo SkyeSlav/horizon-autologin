@@ -15,7 +15,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const ID: &str = "autologin";
 pub const NAME: &str = "Auto Login";
-pub const VERSION: &str = "1.1.4";
+pub const VERSION: &str = "1.1.5";
 pub const DESCRIPTION: &str = "Logs you in on join when a password is saved, and watches for login/register prompts in chat, in the action bar and on the boss bar, per server.";
 
 /// Settings keys, one file per key under the mod's data folder.
@@ -135,10 +135,13 @@ impl Config {
 
 }
 
-/// A login or register the delay is counting down for.
+/// A login or register the delay is counting down for. The command is
+/// rendered at dispatch, not at schedule time, so the toggle and the
+/// saved password are rechecked with their current values.
 struct Pending {
     login: bool,
-    command: String,
+    password: String,
+    template: String,
     due: u64,
     /// The tick of the prompt that scheduled it; prompts up to here are spent.
     stamp: u64,
@@ -153,6 +156,8 @@ struct State {
     current: Option<(String, String)>,
     current_since: u64,
     attempted: bool,
+    /// The promptless login already went out on this connection.
+    join_login_done: bool,
     pending: Option<Pending>,
     /// (tick, server, player, text), oldest first, capped.
     recent: Vec<(u64, String, String, String)>,
@@ -168,6 +173,7 @@ impl Default for State {
             current: None,
             current_since: 0,
             attempted: false,
+            join_login_done: false,
             pending: None,
             recent: Vec::new(),
         }
@@ -249,6 +255,32 @@ pub fn take_store() -> Vec<(String, String)> {
     std::mem::take(&mut state().store)
 }
 
+/// Move a saved password from one player key to another (a name-keyed
+/// entry to the account-UUID key), when the new key has none saved.
+/// Queues a store write only when something moved.
+pub fn migrate_password(server: &str, from_player: &str, to_player: &str) -> bool {
+    if from_player == to_player {
+        return false;
+    }
+    let mut s = state();
+    if s.passwords
+        .iter()
+        .any(|p| p.server == server && p.player == to_player)
+    {
+        return false;
+    }
+    let Some(idx) = s
+        .passwords
+        .iter()
+        .position(|p| p.server == server && p.player == from_player)
+    else {
+        return false;
+    };
+    s.passwords[idx].player = to_player.to_string();
+    s.queue_passwords();
+    true
+}
+
 /// A chat line arrived from `server` for `player`. Only its text is kept.
 pub fn note_chat(server: &str, player: &str, text: &str) {
     let mut s = state();
@@ -268,8 +300,8 @@ pub struct TickOut {
     pub lines: Vec<String>,
 }
 
-/// One client tick on a server. `key` is the server address and profile
-/// name, or None when not on a server.
+/// One client tick on a server. `key` is the server address and player
+/// identity, or None when not on a server.
 pub fn tick(key: Option<(&str, &str)>) -> TickOut {
     let mut out = TickOut::default();
     let mut s = state();
@@ -287,21 +319,36 @@ pub fn tick(key: Option<(&str, &str)>) -> TickOut {
         s.recent.retain(|r| r.1 == server && r.2 == player);
         s.current_since = s.recent.iter().map(|r| r.0).min().unwrap_or(s.tick);
         s.attempted = false;
+        s.join_login_done = false;
         s.pending = None;
     }
     if s.attempted {
         return out;
     }
+    let cfg = s.config.clone();
+    // A queued send is cancelled when its auto-detect toggle goes off.
+    if let Some(p) = &s.pending {
+        let on = if p.login {
+            cfg.autodetect_login
+        } else {
+            cfg.autodetect_register
+        };
+        if !on {
+            s.pending = None;
+        }
+    }
     // Schedule from the newest prompt for this server, if nothing is pending.
     if s.pending.is_none() {
-        let cfg = s.config.clone();
         let since = s.current_since;
         let mut found: Option<(bool, u64)> = None;
         // A saved password logs in on join with no prompt needed; the
         // prompt scan below only matters when there is nothing saved
         // (register). The auto-detect toggle is still the off switch.
         let mut joined_with_password = false;
-        if cfg.autodetect_login && s.password(server, player).is_some() {
+        // The promptless login is consumed once per connection: without
+        // this, a saved password would reschedule it every delay
+        // interval once the once-per-join stop is off.
+        if cfg.autodetect_login && !s.join_login_done && s.password(server, player).is_some() {
             found = Some((true, s.tick));
             joined_with_password = true;
         }
@@ -365,27 +412,56 @@ pub fn tick(key: Option<(&str, &str)>) -> TickOut {
             }
             s.pending = Some(Pending {
                 login,
-                command: render_template(&template, &password),
+                password,
+                template,
                 due,
                 stamp,
             });
         }
     }
-    // Send when the delay ran out.
+    // Send when the delay ran out. The connection, the toggle and the
+    // current credential are rechecked immediately before dispatch, so
+    // a stale queued send never goes out.
     if let Some(p) = &s.pending {
         if s.tick >= p.due {
             let p = s.pending.take().unwrap();
-            if p.login {
-                if s.config.disable_once_logged_in {
-                    s.attempted = true;
+            let on = if p.login {
+                cfg.autodetect_login
+            } else {
+                cfg.autodetect_register
+            };
+            let same_connection = s
+                .current
+                .as_ref()
+                .map(|(a, b)| (a.as_str(), b.as_str()))
+                == Some((server, player));
+            // A login re-reads the saved password: a changed password is
+            // sent, a deleted one cancels the send. A register sends only
+            // the password it generated and saved; if the saved password
+            // changed meanwhile, the queued register is dropped.
+            let password = if p.login {
+                s.password(server, player).map(|pw| pw.to_string())
+            } else {
+                s.password(server, player)
+                    .filter(|pw| *pw == p.password)
+                    .map(|pw| pw.to_string())
+            };
+            if on && same_connection {
+                if let Some(password) = password {
+                    if p.login {
+                        if cfg.disable_once_logged_in {
+                            s.attempted = true;
+                        }
+                        s.join_login_done = true;
+                    } else if cfg.disable_once_registered {
+                        s.attempted = true;
+                    }
+                    // The prompt that scheduled this is spent, so it cannot fire
+                    // again when the once-per-join stop is off.
+                    s.recent.retain(|r| r.0 > p.stamp);
+                    out.send = Some(render_template(&p.template, &password));
                 }
-            } else if s.config.disable_once_registered {
-                s.attempted = true;
             }
-            // The prompt that scheduled this is spent, so it cannot fire
-            // again when the once-per-join stop is off.
-            s.recent.retain(|r| r.0 > p.stamp);
-            out.send = Some(p.command);
         }
     }
     out
@@ -457,7 +533,7 @@ const HELP: &[&str] = &[
 ];
 
 /// A command the player typed, without its slash. None when it is not one
-/// of this mod's commands. `key` is the server address and profile name.
+/// of this mod's commands. `key` is the server address and player identity.
 pub fn command(key: Option<(&str, &str)>, line: &str) -> Option<CommandOut> {
     let line = line.strip_prefix('/').unwrap_or(line);
     let mut words = line.split_whitespace();
@@ -507,9 +583,9 @@ pub fn command(key: Option<(&str, &str)>, line: &str) -> Option<CommandOut> {
         }
         ["help"] => out.lines.extend(HELP.iter().map(|l| l.to_string())),
         ["status"] => {
-            let (server, player) = key.unwrap_or(("<none>", "<none>"));
+            let server = key.map(|(s, _)| s).unwrap_or("<none>");
             let saved = key.is_some_and(|(srv, ply)| s.password(srv, ply).is_some());
-            out.lines.push(format!("[AutoLogin] Server: {server} ({player})"));
+            out.lines.push(format!("[AutoLogin] Server: {server}"));
             out.lines.push(format!(
                 "[AutoLogin] Saved password: {}",
                 if saved { "yes" } else { "no" }
@@ -538,7 +614,7 @@ pub fn command(key: Option<(&str, &str)>, line: &str) -> Option<CommandOut> {
                 );
             } else {
                 s.set_password(server, player, &password, true);
-                out.lines.push(format!("[AutoLogin] Password saved for {server} ({player})."));
+                out.lines.push(format!("[AutoLogin] Password saved for {server}."));
             }
         }
         ["pattern", which, rest @ ..] if *which == "login" || *which == "register" => {
@@ -663,6 +739,100 @@ mod tests {
         // Leave and rejoin: it sends again.
         assert!(tick(None).send.is_none());
         assert_eq!(run_ticks(25), vec!["login hunter2".to_string()]);
+    }
+
+    #[test]
+    fn join_login_does_not_repeat_when_once_per_join_off() {
+        setup();
+        load(&|k| match k {
+            "disable_once_logged_in" => Some("false".to_string()),
+            _ => None,
+        });
+        command(KEY, "autologin set hunter2").unwrap();
+        // Even with the once-per-join stop off, the promptless login
+        // fires once per connection.
+        assert_eq!(run_ticks(100), vec!["login hunter2".to_string()]);
+        // A rejoin fires it again.
+        assert!(tick(None).send.is_none());
+        assert_eq!(run_ticks(100), vec!["login hunter2".to_string()]);
+    }
+
+    #[test]
+    fn toggle_off_cancels_queued_login() {
+        setup();
+        command(KEY, "autologin set hunter2").unwrap();
+        assert!(run_ticks(1).is_empty()); // login scheduled, due in 20 ticks
+        command(KEY, "autologin toggle login").unwrap();
+        // The queued login never goes out.
+        assert!(run_ticks(30).is_empty());
+        // Toggling back on re-arms it on this connection.
+        command(KEY, "autologin toggle login").unwrap();
+        assert_eq!(run_ticks(30), vec!["login hunter2".to_string()]);
+    }
+
+    #[test]
+    fn dispatch_uses_current_password() {
+        setup();
+        command(KEY, "autologin set hunter2").unwrap();
+        assert!(run_ticks(1).is_empty()); // login scheduled, due in 20 ticks
+        // The saved password is replaced before the delay runs out.
+        command(KEY, "autologin set newpass").unwrap();
+        assert_eq!(run_ticks(30), vec!["login newpass".to_string()]);
+    }
+
+    #[test]
+    fn dispatch_drops_login_when_password_is_gone() {
+        setup();
+        command(KEY, "autologin set hunter2").unwrap();
+        assert!(run_ticks(1).is_empty()); // login scheduled, due in 20 ticks
+        // The saved passwords are wiped before the delay runs out.
+        load(&|_| None);
+        assert!(run_ticks(30).is_empty());
+    }
+
+    #[test]
+    fn register_dispatch_drops_stale_password() {
+        setup();
+        note_chat("play.example.net:25565", "Player", "Please /register to play");
+        assert!(run_ticks(1).is_empty()); // register scheduled, due in 20 ticks
+        // The saved password is replaced before the delay runs out.
+        command(KEY, "autologin set myownpassword").unwrap();
+        // No /register goes out; the login that follows uses the
+        // replaced password instead.
+        assert!(run_ticks(30).is_empty());
+        assert_eq!(run_ticks(15), vec!["login myownpassword".to_string()]);
+    }
+
+    #[test]
+    fn migrate_password_moves_name_key_to_uuid_key() {
+        setup();
+        command(KEY, "autologin set hunter2").unwrap();
+        let uuid = "01234567-89ab-cdef-0123-456789abcdef";
+        assert!(migrate_password("play.example.net:25565", "Player", uuid));
+        assert_eq!(
+            state().password("play.example.net:25565", uuid),
+            Some("hunter2")
+        );
+        assert!(state().password("play.example.net:25565", "Player").is_none());
+        // A second move is a no-op.
+        assert!(!migrate_password("play.example.net:25565", "Player", uuid));
+        // An existing UUID-keyed password is never overwritten.
+        setup();
+        command(KEY, "autologin set hunter2").unwrap();
+        command(
+            Some(("play.example.net:25565", uuid)),
+            "autologin set other",
+        )
+        .unwrap();
+        assert!(!migrate_password("play.example.net:25565", "Player", uuid));
+        assert_eq!(
+            state().password("play.example.net:25565", uuid),
+            Some("other")
+        );
+        assert_eq!(
+            state().password("play.example.net:25565", "Player"),
+            Some("hunter2")
+        );
     }
 
     #[test]

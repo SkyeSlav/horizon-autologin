@@ -15,15 +15,16 @@ register you when there is none.
 
 > **Releases:** grab the ready-built files from the
 > [latest release](https://github.com/SkyeSlav/horizon-autologin/releases/latest)
-> — no build needed. `autologin-1.1.4.hmod` is for the Horizon launcher
+> — no build needed. `autologin-1.1.5.hmod` is for the Horizon launcher
 > (0.2.70+). The `.hnmod` (Starling 0.8.0) build was discontinued after
 > 1.1.1; `.hmod` only from 1.1.2.
 
 - **Auto Login on Join** — when a password is saved for the server and
-  player, it sends `/login` shortly after joining, with no prompt
-  needed. (The `.hmod` cannot see title text, but that no longer matters
-  for login: a saved password logs in on join whatever channel the
-  server prompts on.)
+  account, it sends `/login` shortly after joining, with no prompt
+  needed, once per connection. (The `.hmod` cannot see title text, but
+  that no longer matters for login: a saved password logs in on join
+  whatever channel the server prompts on.) Turning auto-login off
+  cancels a login that is still waiting out its delay.
 - **Prompt Detection** — watches incoming chat, title text, the
   action bar and the boss bar for login/register prompts, for the
   register case below. (The `.hmod` cannot see title text: the mod API
@@ -46,7 +47,7 @@ Manual triggers are the slash commands `/autologin` and `/autoregister`
 
 Two builds, same behaviour, different launchers:
 
-- **1.1.4 `.hmod`** (`hmod/`): the native mod for the Horizon launcher
+- **1.1.5 `.hmod`** (`hmod/`): the native mod for the Horizon launcher
   (0.2.70+) and the registry. Pinned to Horizon Nightly 2026-11-18
   (`0b14f8ac`, game 26.3). Detection uses the typed
   `client_chat_received` hook, overlay (action-bar) lines included, plus
@@ -62,7 +63,7 @@ Two builds, same behaviour, different launchers:
 
 ## Install
 
-### Horizon launcher (`.hmod`, 1.1.4)
+### Horizon launcher (`.hmod`, 1.1.5)
 
 Build it from this repo (needs Rust 1.99+ and the `cargo-horizon-mod`
 tool; the tool fetches the pinned SDK itself):
@@ -72,7 +73,7 @@ cargo install --locked --git https://github.com/horizon-rust/horizon cargo-horiz
 cd hmod && cargo horizon-mod build   # target/horizon-mod/autologin.hmod
 ```
 
-Then put `autologin-1.1.4.hmod` (the release file; a local build produces
+Then put `autologin-1.1.5.hmod` (the release file; a local build produces
 `autologin.hmod` — same file, rename it if you like) in the instance's
 `horizon-mods/` folder and add
 `mod.autologin:true` to `horizon-mods.txt` in the same game folder — or run
@@ -106,12 +107,18 @@ through 0, 1, 2, 3, 5s.)
 
 ## How it works
 
-- On join, if a password is saved for this server and player, the mod
+- On join, if a password is saved for this server and account, the mod
   waits the delay (default 1s), then sends `/login <password>`. No
   prompt is needed, so the channel the server prompts on does not
-  matter for login. One attempt per join: after sending, it stops
-  until you rejoin, unless you turn that off (the disable-once-logged-in /
-  disable-once-registered settings, on by default).
+  matter for login. The attempt is consumed once per connection, so it
+  cannot repeat and trip a rate limit; turning auto-login off cancels
+  a login that is still waiting out its delay, and the toggle and the
+  saved password are rechecked just before sending. Passwords are
+  keyed by server and account UUID: a saved password is only ever sent
+  for the exact server and account it was saved for. One attempt per
+  join: after sending, it stops until you rejoin, unless you turn that
+  off (the disable-once-logged-in / disable-once-registered settings,
+  on by default).
 - If no password is saved, a prompt is what starts things: a chat
   line, a title or subtitle, an action-bar line, or a boss bar's name
   containing the pattern (case-insensitive). A register prompt sends
@@ -134,19 +141,24 @@ through 0, 1, 2, 3, 5s.)
   will not trigger auto-register. Chat, action-bar and
   boss-bar prompts are read. Login is unaffected: a saved password
   logs in on join with no prompt needed.
+- **Passwords are keyed by server and account UUID.** A saved password
+  is only ever sent for the exact server and account it was saved for.
+  Passwords saved under a profile name by 1.1.4 and earlier migrate to
+  the UUID key on join.
 - **Only lines containing the configured patterns count** (`login` /
   `register` by default, case-insensitive). If the server phrases its
   prompt differently, set the patterns to match it.
 - **One attempt per join.** After sending, the mod stops until you rejoin,
   unless the disable-once-logged-in / disable-once-registered settings
-  are turned off.
+  are turned off. The promptless login is consumed once per connection
+  regardless, so it cannot repeat and trip a rate limit.
 - **Passwords saved by the old `.hnmod` do not carry over.** The two
   formats keep them in different folders; re-save with
   `/autologin set <password>`.
 
 ## To do
 
-- [ ] **Auto Login 1.1.4 listed on the registry.** The release is live;
+- [ ] **Auto Login 1.1.5 listed on the registry.** The release is live;
   the registry entry is pending review of
   [PR #1609](https://github.com/horizon-rust/horizon-mods/pull/1609).
 - [ ] **Title/subtitle read in the mod API.** Proposed in
@@ -177,10 +189,10 @@ not a cryptographic secret.
 
 ## Layout
 
-- `hmod/`: the 1.1.4 native `.hmod` (Rust crate on the mod API):
+- `hmod/`: the 1.1.5 native `.hmod` (Rust crate on the mod API):
   `src/engine.rs` is the shared logic with its unit tests,
   `src/lib.rs` the hooks, `horizon-mod.toml` the manifest and pins.
-- `mixins/autologin/engine/`: the 1.1.4 mod's own crate (std only), with
+- `mixins/autologin/engine/`: the 1.1.5 mod's own crate (std only), with
   its unit tests — prompts, delay, once-per-join, commands, password
   storage. Same logic as `hmod/src/engine.rs`, adapted to the old
   settings storage.

@@ -18,6 +18,9 @@
 //! - `client_tick_pre` runs the delay and sends the login/register command;
 //!   on join it logs in at once when a password is saved for the server,
 //!   with no prompt needed — prompts only matter when nothing is saved.
+//!   The promptless login fires once per connection, a queued send is
+//!   cancelled when its toggle goes off, and the toggle and the saved
+//!   password are rechecked immediately before dispatch.
 //! - `command` answers the mod's own `/autologin` and `/autoregister`,
 //! - `register` declares the four settings on the mod's page in Options > Mods,
 //! - `client_player_logging_in` resets per connection and remembers the
@@ -28,7 +31,10 @@
 //! Everything else the engine stores lives in the mod's data files
 //! (`horizon-mod-data/autologin/`): `config` holds `key=value` lines for the
 //! remaining config (patterns, templates, password options), and `passwords`
-//! holds the `server|player|password` lines.
+//! holds `server|player|password` lines, keyed by server and the account's
+//! UUID — a saved password is only ever sent for the exact server and
+//! account it was saved for. Older name-keyed entries migrate to the UUID
+//! key on join.
 
 use mod_api::{
     self, ClientChatReceivedEvent, ClientHost, ClientPlayerLoggingInEvent, ClientTickPreEvent,
@@ -143,14 +149,36 @@ fn persist(host: &dyn ClientHost) {
     }
 }
 
+/// A UUID as the hyphenated lowercase string the password file keys on.
+fn uuid_string(uuid: u128) -> String {
+    let hex = format!("{uuid:032x}");
+    format!(
+        "{}-{}-{}-{}-{}",
+        &hex[0..8],
+        &hex[8..12],
+        &hex[12..16],
+        &hex[16..20],
+        &hex[20..32]
+    )
+}
+
 /// The (server, player) key the engine files this connection under. The
-/// player name comes from the tab list once the server lists the local
-/// player; until then the address alone keys it.
+/// player part is the local account's UUID, so a saved password can only
+/// be looked up for the exact server and account it was saved for — a
+/// tab-list name is only a display label, and labels can be shared
+/// across connections. Until the UUID is known the profile name keys it.
 fn current_key(
     host: &dyn ClientHost,
     identity: &Mutex<(Option<u128>, Option<String>)>,
 ) -> Option<(String, String)> {
     let server = host.client_session().client_server()?.address?;
+    let uuid = {
+        let id = identity.lock().unwrap_or_else(|e| e.into_inner());
+        id.0
+    };
+    if let Some(uuid) = uuid {
+        return Some((server, uuid_string(uuid)));
+    }
     let player = local_player_name(host, identity).unwrap_or_default();
     Some((server, player))
 }
@@ -283,6 +311,17 @@ impl Hooks for Mod {
         }
         let key = current_key(host, &self.identity);
         load(host);
+        // Migrate a password saved under the profile name to the
+        // account-UUID key, once the tab list has shown the name. A
+        // no-op after the move (or when nothing was saved that way):
+        // the key is the UUID exactly when it differs from the name.
+        if let Some((server, player)) = &key {
+            if let Some(name) = local_player_name(host, &self.identity) {
+                if *player != name {
+                    engine::migrate_password(server, &name, player);
+                }
+            }
+        }
         let out = engine::tick(key.as_ref().map(|(s, p)| (s.as_str(), p.as_str())));
         answer(host, out.send, out.lines);
         persist(host);

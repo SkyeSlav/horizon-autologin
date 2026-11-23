@@ -1,6 +1,6 @@
 id = "autologin"
 name = "Auto Login"
-version = "1.1.4"
+version = "1.1.5"
 description = "Logs you in on join when a password is saved, and watches for login/register prompts in chat, in the action bar and on the boss bar, per server."
 authors = ["SkyeSlav"]
 license = "MIT"
