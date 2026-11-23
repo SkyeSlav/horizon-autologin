@@ -8,6 +8,13 @@ fn autologin_tick(game: &mut crate::game::Game<'_>) {
     if !game.native_on(al::ID) || !r.joined || r.reconfiguring.is_some() {
         return;
     }
+    // A friend-invite connection has no stable destination: its raw
+    // address is "friend:<invite code>", and the shown address is the
+    // shared display label "Friend's world". No credential is looked
+    // up or sent on it.
+    if r.session.address.starts_with("friend:") {
+        return;
+    }
     let key = (r.session.address.clone(), r.profile_name.clone());
     {
         let game = &*game;

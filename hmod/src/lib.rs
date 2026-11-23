@@ -45,6 +45,9 @@
 //! one per server the player allowed auto-login and auto-register on. A
 //! saved password without a consent record stays inactive until the player
 //! allows it. Older name-keyed entries migrate to the UUID key on join.
+//! Friend-invite connections have no stable server address — the API shows
+//! the display label "Friend's world" for every one — so no credential is
+//! looked up or sent on them.
 
 use mod_api::{
     self, ClientChatReceivedEvent, ClientHost, ClientPlayerLoggingInEvent, ClientTickPreEvent,
@@ -70,6 +73,10 @@ const CONFIG_FILE: &str = "config";
 const PASSWORDS_FILE: &str = "passwords";
 const CONSENTS_FILE: &str = "consents";
 
+/// What the player is told on a Friends world: no credential activity there.
+const FRIENDS_NOTICE: &str =
+    "[AutoLogin] Friends worlds don't have a stable address, so auto-login is off here.";
+
 #[derive(Default)]
 struct Mod {
     /// (local player's UUID from `client_player_logging_in`, resolved profile
@@ -81,6 +88,9 @@ struct Mod {
     /// on screen they would take turns being "not the last one" and
     /// both would be re-processed every frame.
     seen_boss_bars: Mutex<HashMap<u128, String>>,
+    /// Whether the Friends-worlds notice has been shown on this connection,
+    /// so the tick hook says it once instead of every tick.
+    friends_noticed: Mutex<bool>,
 }
 
 /// One data file as text, if it exists and is UTF-8.
@@ -177,16 +187,37 @@ fn uuid_string(uuid: u128) -> String {
     )
 }
 
+/// The joined server's address as the API shows it, if any.
+fn server_address(host: &dyn ClientHost) -> Option<String> {
+    host.client_session().client_server()?.address
+}
+
+/// Whether `address` is the engine's display label for a friend-invite
+/// connection (horizon-client `shown_address`): "Friend's world", or
+/// "Friend's world (Name-****)" when the friend's nameplate shows.
+/// Different Friends worlds read back as the same label, so the address
+/// is not a stable destination identifier — no credential may be keyed
+/// on it, until the SDK exposes a stable, non-secret one.
+fn friends_address(address: &str) -> bool {
+    address.starts_with("Friend's world")
+}
+
 /// The (server, player) key the engine files this connection under. The
 /// player part is the local account's UUID, so a saved password can only
 /// be looked up for the exact server and account it was saved for — a
 /// tab-list name is only a display label, and labels can be shared
 /// across connections. Until the UUID is known the profile name keys it.
+/// A Friends world has no key at all: its address is the shared display
+/// label above, so a credential saved for one world would be sent to
+/// another.
 fn current_key(
     host: &dyn ClientHost,
     identity: &Mutex<(Option<u128>, Option<String>)>,
 ) -> Option<(String, String)> {
-    let server = host.client_session().client_server()?.address?;
+    let server = server_address(host)?;
+    if friends_address(&server) {
+        return None;
+    }
     let uuid = {
         let id = identity.lock().unwrap_or_else(|e| e.into_inner());
         id.0
@@ -342,6 +373,22 @@ impl Hooks for Mod {
         }
         let key = current_key(host, &self.identity);
         load(host);
+        // On a Friends world there is no key: say so once per connection,
+        // instead of silently doing nothing.
+        if key.is_none() {
+            if let Some(address) = server_address(host) {
+                if friends_address(&address) {
+                    let mut noticed = self
+                        .friends_noticed
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner());
+                    if !*noticed {
+                        *noticed = true;
+                        let _ = host.chat_line(Text::literal(FRIENDS_NOTICE));
+                    }
+                }
+            }
+        }
         // Migrate a password — and its consent record — saved under the
         // profile name to the account-UUID key, once the tab list has
         // shown the name. A no-op after the move (or when nothing was
@@ -366,12 +413,22 @@ impl Hooks for Mod {
         }
         let key = current_key(host, &self.identity);
         load(host);
-        let Some(out) = engine::command(
+        let Some(mut out) = engine::command(
             key.as_ref().map(|(s, p)| (s.as_str(), p.as_str())),
             event.command,
         ) else {
             return Flow::Continue;
         };
+        // On a Friends world there is no key: the engine's "Not on a
+        // server." would mislead, so say why nothing happens instead.
+        if key.is_none() {
+            if let Some(address) = server_address(host) {
+                if friends_address(&address) {
+                    out.send = None;
+                    out.lines = vec![FRIENDS_NOTICE.to_string()];
+                }
+            }
+        }
         answer(host, out.send, out.lines);
         persist(host);
         Flow::Cancel
@@ -400,6 +457,13 @@ impl Hooks for Mod {
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
             seen_bars.clear();
+        }
+        {
+            let mut noticed = self
+                .friends_noticed
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            *noticed = false;
         }
         if !host.on(engine::ID) {
             return;

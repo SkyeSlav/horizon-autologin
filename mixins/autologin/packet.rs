@@ -28,5 +28,10 @@ fn autologin_packet(
     if !r.joined {
         return;
     }
+    // A friend-invite connection has no stable destination (see tick.rs):
+    // its prompts are not noted, since nothing may be sent on it.
+    if r.session.address.starts_with("friend:") {
+        return;
+    }
     al::note_chat(&r.session.address, &r.profile_name, &text);
 }
