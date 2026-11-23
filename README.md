@@ -15,7 +15,7 @@ in the action bar to register you when there is none.
 
 > **Releases:** grab the ready-built files from the
 > [latest release](https://github.com/SkyeSlav/horizon-autologin/releases/latest)
-> — no build needed. `autologin-1.1.7.hmod` is for the Horizon launcher
+> — no build needed. `autologin-1.1.8.hmod` is for the Horizon launcher
 > (0.2.70+). The `.hnmod` (Starling 0.8.0) build was discontinued after
 > 1.1.1; `.hmod` only from 1.1.2.
 
@@ -63,7 +63,7 @@ Manual triggers are the slash commands `/autologin` and `/autoregister`
 
 Two builds, same behaviour, different launchers:
 
-- **1.1.7 `.hmod`** (`hmod/`): the native mod for the Horizon launcher
+- **1.1.8 `.hmod`** (`hmod/`): the native mod for the Horizon launcher
   (0.2.70+) and the registry. Pinned to Horizon Nightly 2026-11-18
   (`0b14f8ac`, game 26.3). Detection uses the typed
   `client_chat_received` hook, overlay (action-bar) lines included, plus
@@ -79,7 +79,7 @@ Two builds, same behaviour, different launchers:
 
 ## Install
 
-### Horizon launcher (`.hmod`, 1.1.7)
+### Horizon launcher (`.hmod`, 1.1.8)
 
 Build it from this repo (needs Rust 1.99+ and the `cargo-horizon-mod`
 tool; the tool fetches the pinned SDK itself):
@@ -89,7 +89,7 @@ cargo install --locked --git https://github.com/horizon-rust/horizon cargo-horiz
 cd hmod && cargo horizon-mod build   # target/horizon-mod/autologin.hmod
 ```
 
-Then put `autologin-1.1.7.hmod` (the release file; a local build produces
+Then put `autologin-1.1.8.hmod` (the release file; a local build produces
 `autologin.hmod` — same file, rename it if you like) in the instance's
 `horizon-mods/` folder and add
 `mod.autologin:true` to `horizon-mods.txt` in the same game folder — or run
@@ -189,7 +189,7 @@ through 0, 1, 2, 3, 5s.)
 
 ## To do
 
-- [ ] **Auto Login 1.1.7 listed on the registry.** The registry entry is
+- [ ] **Auto Login 1.1.8 listed on the registry.** The registry entry is
   pending review of
   [PR #1770](https://github.com/horizon-rust/horizon-mods/pull/1770).
 - [ ] **Title/subtitle read in the mod API.** Proposed in
@@ -220,10 +220,10 @@ not a cryptographic secret.
 
 ## Layout
 
-- `hmod/`: the 1.1.7 native `.hmod` (Rust crate on the mod API):
+- `hmod/`: the 1.1.8 native `.hmod` (Rust crate on the mod API):
   `src/engine.rs` is the shared logic with its unit tests,
   `src/lib.rs` the hooks, `horizon-mod.toml` the manifest and pins.
-- `mixins/autologin/engine/`: the 1.1.7 mod's own crate (std only), with
+- `mixins/autologin/engine/`: the 1.1.8 mod's own crate (std only), with
   its unit tests — prompts, delay, once-per-join, commands, password
   storage. Same logic as `hmod/src/engine.rs`, adapted to the old
   settings storage.

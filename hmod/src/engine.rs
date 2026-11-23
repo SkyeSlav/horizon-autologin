@@ -15,7 +15,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const ID: &str = "autologin";
 pub const NAME: &str = "Auto Login";
-pub const VERSION: &str = "1.1.7";
+pub const VERSION: &str = "1.1.8";
 pub const DESCRIPTION: &str = "Logs you in on join when a password is saved and consent is given, and watches for login/register prompts in chat, in the action bar and on the boss bar, per server.";
 
 /// Settings keys, one file per key under the mod's data folder.

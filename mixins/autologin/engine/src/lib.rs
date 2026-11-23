@@ -14,7 +14,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const ID: &str = "autologin";
 pub const NAME: &str = "Auto Login";
-pub const VERSION: &str = "1.1.7";
+pub const VERSION: &str = "1.1.8";
 pub const DESCRIPTION: &str = "Logs you in on join when a password is saved and consent is given, and watches for login/register prompts in chat, in title text and in the action bar, per server.";
 
 /// The delay choices the settings page cycles through, in seconds.
