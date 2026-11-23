@@ -387,8 +387,7 @@ pub fn migrate_consent(server: &str, from_player: &str, to_player: &str) -> bool
         return false;
     }
     let mut s = state();
-    if s
-        .consents
+    if s.consents
         .iter()
         .any(|(srv, ply)| srv == server && ply == to_player)
     {
@@ -566,9 +565,7 @@ pub fn tick(key: Option<(&str, &str)>) -> TickOut {
             // player allowed it, so it registers now.
             if found.is_none() {
                 if let Some(stamp) = s.register_prompt {
-                    if cfg.autodetect_register
-                        && consented
-                        && s.password(server, player).is_none()
+                    if cfg.autodetect_register && consented && s.password(server, player).is_none()
                     {
                         found = Some((false, stamp));
                     }
@@ -1155,9 +1152,11 @@ mod tests {
         setup();
         note_chat("play.example.net:25565", "Player", "please register");
         let (_, lines) = run_ticks_out(1);
-        assert!(lines
-            .iter()
-            .any(|l| l.contains("Allow Auto Login to register")));
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("Allow Auto Login to register"))
+        );
         // Twenty more lines drain the prompt out of `recent` (cap 16).
         for i in 0..20 {
             note_chat(
@@ -1170,9 +1169,11 @@ mod tests {
         let sends = run_ticks(40);
         assert_eq!(sends.len(), 1);
         assert!(sends[0].starts_with("register "));
-        assert!(state()
-            .password("play.example.net:25565", "Player")
-            .is_some());
+        assert!(
+            state()
+                .password("play.example.net:25565", "Player")
+                .is_some()
+        );
     }
 
     #[test]
@@ -1214,9 +1215,10 @@ mod tests {
         for _ in 0..200 {
             let pw = generate_password(&cfg);
             assert_eq!(pw.len(), 6);
-            assert!(pw
-                .bytes()
-                .all(|b| cfg.password_chars.as_bytes().contains(&b)));
+            assert!(
+                pw.bytes()
+                    .all(|b| cfg.password_chars.as_bytes().contains(&b))
+            );
             if pw.bytes().any(|b| (b'6'..=b'9').contains(&b)) {
                 seen_high_digit = true;
             }
