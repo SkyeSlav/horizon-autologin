@@ -23,10 +23,8 @@ fn autologin_command(game: &mut crate::game::Game<'_>, command: &str, ran: &mut 
         let game = &*game;
         al::load(&|k| game.native_setting(al::ID, k));
     }
-    let Some(mut out) = al::command(
-        key.as_ref().map(|(s, p)| (s.as_str(), p.as_str())),
-        command,
-    ) else {
+    let Some(mut out) = al::command(key.as_ref().map(|(s, p)| (s.as_str(), p.as_str())), command)
+    else {
         return;
     };
     if friend {
