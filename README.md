@@ -1,5 +1,7 @@
 # horizon-autologin
 
+> Soon to be renamed to **LetMeIn**.
+
 <p align="center"><img src="logo.png" alt="horizon-autologin logo: a padlock with an amber keyhole inside a white loop on a dark background" width="180"></p>
 
 <p align="center">
