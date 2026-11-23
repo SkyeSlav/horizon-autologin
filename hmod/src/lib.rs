@@ -49,7 +49,7 @@
 use mod_api::{
     self, ClientChatReceivedEvent, ClientHost, ClientPlayerLoggingInEvent, ClientTickPreEvent,
     Command, CommandEvent, ConfigPath, CustomizeBossEventProgressEvent, Flow, Hooks,
-    RegisterClientCommandsEvent, RegistrationContext, Registrar, SettingChangedEvent, SettingSpec,
+    RegisterClientCommandsEvent, Registrar, RegistrationContext, SettingChangedEvent, SettingSpec,
     Text,
 };
 use std::collections::{BTreeMap, HashMap};
@@ -255,7 +255,9 @@ impl Hooks for Mod {
         // and lists them as the game's own instead of showing red.
         event.commands.push(Command::new("autologin"));
         event.commands.push(Command::new("autologin allow"));
-        event.commands.push(Command::new("autologin set <password:text>"));
+        event
+            .commands
+            .push(Command::new("autologin set <password:text>"));
         event.commands.push(Command::new("autologin status"));
         event.commands.push(Command::new("autologin help"));
         event
@@ -275,10 +277,12 @@ impl Hooks for Mod {
         event.commands.push(Command::new("al status"));
         event.commands.push(Command::new("al help"));
         event.commands.push(Command::new("al toggle <which:word>"));
-        event.commands.push(Command::new("al delay <seconds:integer>"));
-        event.commands.push(Command::new(
-            "al pattern <which:word> <pattern:text>",
-        ));
+        event
+            .commands
+            .push(Command::new("al delay <seconds:integer>"));
+        event
+            .commands
+            .push(Command::new("al pattern <which:word> <pattern:text>"));
     }
 
     fn customize_boss_event_progress(
