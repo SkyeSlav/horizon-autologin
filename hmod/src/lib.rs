@@ -14,27 +14,37 @@
 //!   new connection.
 //! - `register_client_commands` declares `/autologin` and `/autoregister`
 //!   (with their subcommands) to the chat tree, so they colour and
-//!   complete instead of showing red while typing.
+//!   complete instead of showing red while typing. `/al` is a short alias
+//!   for `/autologin`, and `/autologin allow` records consent for the
+//!   server the player is on.
 //! - `client_tick_pre` runs the delay and sends the login/register command;
-//!   on join it logs in at once when a password is saved for the server,
-//!   with no prompt needed — prompts only matter when nothing is saved.
-//!   The promptless login fires once per connection, a queued send is
-//!   cancelled when its toggle goes off, and the toggle and the saved
-//!   password are rechecked immediately before dispatch.
+//!   on join it logs in at once when a password is saved for the server
+//!   and consent is recorded for it, with no prompt needed — prompts only
+//!   matter when nothing is saved. The promptless login fires once per
+//!   connection, a queued send is cancelled when its toggle goes off, and
+//!   the toggle and the saved password are rechecked immediately before
+//!   dispatch. A generated register password is saved only when the
+//!   `/register` is actually sent. The one-attempt limit survives a proxy
+//!   reconfiguration: it resets only on a real off-server tick, not when
+//!   the server address merely changes.
 //! - `command` answers the mod's own `/autologin` and `/autoregister`,
 //! - `register` declares the four settings on the mod's page in Options > Mods,
 //! - `client_player_logging_in` resets per connection and remembers the
 //!   local player's UUID, so the profile name can be read from the tab list.
-//!   It also clears the boss bars seen on the previous connection.
+//!   It also clears the boss bars seen on the previous connection. It does
+//!   not reset the one-attempt limit — that survives a proxy
+//!   reconfiguration and is reset only by a real off-server tick.
 //!
 //! The four registered settings hold the values the settings page edits.
 //! Everything else the engine stores lives in the mod's data files
 //! (`horizon-mod-data/autologin/`): `config` holds `key=value` lines for the
-//! remaining config (patterns, templates, password options), and `passwords`
+//! remaining config (patterns, templates, password options), `passwords`
 //! holds `server|player|password` lines, keyed by server and the account's
 //! UUID — a saved password is only ever sent for the exact server and
-//! account it was saved for. Older name-keyed entries migrate to the UUID
-//! key on join.
+//! account it was saved for — and `consents` holds `server|player` lines,
+//! one per server the player allowed auto-login and auto-register on. A
+//! saved password without a consent record stays inactive until the player
+//! allows it. Older name-keyed entries migrate to the UUID key on join.
 
 use mod_api::{
     self, ClientChatReceivedEvent, ClientHost, ClientPlayerLoggingInEvent, ClientTickPreEvent,
@@ -58,6 +68,7 @@ const REGISTERED_SETTINGS: [&str; 4] = [
 
 const CONFIG_FILE: &str = "config";
 const PASSWORDS_FILE: &str = "passwords";
+const CONSENTS_FILE: &str = "consents";
 
 #[derive(Default)]
 struct Mod {
@@ -108,12 +119,14 @@ fn load(host: &dyn ClientHost) {
         .map(|text| parse_config(&text))
         .unwrap_or_default();
     let passwords = read_data(host, PASSWORDS_FILE);
+    let consents = read_data(host, CONSENTS_FILE);
     engine::load(&|key| match key {
         "autodetect_login" => host.setting_bool(key).map(|b| b.to_string()),
         "autodetect_register" => host.setting_bool(key).map(|b| b.to_string()),
         "show_debug" => host.setting_bool(key).map(|b| b.to_string()),
         "delay_seconds" => host.setting_f64(key).map(|f| format!("{}", f as u64)),
         "passwords" => passwords.clone(),
+        "consents" => consents.clone(),
         _ => config.get(key).cloned(),
     });
 }
@@ -132,6 +145,8 @@ fn persist(host: &dyn ClientHost) {
     for (key, value) in store {
         if key == PASSWORDS_FILE {
             write_data(host, PASSWORDS_FILE, &value);
+        } else if key == CONSENTS_FILE {
+            write_data(host, CONSENTS_FILE, &value);
         } else if REGISTERED_SETTINGS.contains(&key.as_str()) {
             host.set_setting(engine::ID, &key, &value);
         } else {
@@ -239,6 +254,7 @@ impl Hooks for Mod {
         // The usages the engine answers, so the chat box colours, completes
         // and lists them as the game's own instead of showing red.
         event.commands.push(Command::new("autologin"));
+        event.commands.push(Command::new("autologin allow"));
         event.commands.push(Command::new("autologin set <password:text>"));
         event.commands.push(Command::new("autologin status"));
         event.commands.push(Command::new("autologin help"));
@@ -252,6 +268,17 @@ impl Hooks for Mod {
             "autologin pattern <which:word> <pattern:text>",
         ));
         event.commands.push(Command::new("autoregister"));
+        // /al is the short alias for /autologin, with the same subcommands.
+        event.commands.push(Command::new("al"));
+        event.commands.push(Command::new("al allow"));
+        event.commands.push(Command::new("al set <password:text>"));
+        event.commands.push(Command::new("al status"));
+        event.commands.push(Command::new("al help"));
+        event.commands.push(Command::new("al toggle <which:word>"));
+        event.commands.push(Command::new("al delay <seconds:integer>"));
+        event.commands.push(Command::new(
+            "al pattern <which:word> <pattern:text>",
+        ));
     }
 
     fn customize_boss_event_progress(
@@ -372,8 +399,11 @@ impl Hooks for Mod {
             return;
         }
         load(host);
-        // A new connection: clear the previous session's prompts and attempts.
-        let _ = engine::tick(None);
+        // A new connection: clear the previous session's prompts and
+        // queued sends. The one-attempt limit is NOT reset here — it
+        // survives a proxy reconfiguration and is reset only by a real
+        // off-server tick.
+        engine::new_connection();
         persist(host);
     }
 }

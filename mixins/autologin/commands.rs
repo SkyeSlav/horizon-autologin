@@ -2,5 +2,6 @@
 // commands do.
 fn autologin_commands(commands: &mut Vec<&'static str>) {
     commands.push("autologin");
+    commands.push("al");
     commands.push("autoregister");
 }
