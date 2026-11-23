@@ -15,7 +15,9 @@
 //! - `register_client_commands` declares `/autologin` and `/autoregister`
 //!   (with their subcommands) to the chat tree, so they colour and
 //!   complete instead of showing red while typing.
-//! - `client_tick_pre` runs the delay and sends the login/register command,
+//! - `client_tick_pre` runs the delay and sends the login/register command;
+//!   on join it logs in at once when a password is saved for the server,
+//!   with no prompt needed — prompts only matter when nothing is saved.
 //! - `command` answers the mod's own `/autologin` and `/autoregister`,
 //! - `register` declares the four settings on the mod's page in Options > Mods,
 //! - `client_player_logging_in` resets per connection and remembers the

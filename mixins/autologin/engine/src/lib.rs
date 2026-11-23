@@ -2,7 +2,8 @@
 //! incoming chat and logs you in with the saved password for that server, or
 //! registers you with a generated password and saves it.
 //!
-//! The game thread calls [`note_chat`] for every chat packet, [`tick`] once
+//! On join, a saved password logs in with no prompt needed. The game thread
+//! calls [`note_chat`] for every chat packet, [`tick`] once
 //! per client tick on a server, and [`command`] for the mod's own commands.
 //! All state lives behind one mutex; the hook adapters in `../` do the
 //! game's I/O (settings files, sending commands, chat lines).
@@ -13,8 +14,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const ID: &str = "autologin";
 pub const NAME: &str = "Auto Login";
-pub const VERSION: &str = "1.1.3";
-pub const DESCRIPTION: &str = "Detects login/register prompts in chat, in title text and in the action bar, and logs you in or registers you, per server.";
+pub const VERSION: &str = "1.1.4";
+pub const DESCRIPTION: &str = "Logs you in on join when a password is saved, and watches for login/register prompts in chat, in title text and in the action bar, per server.";
 
 /// The delay choices the settings page cycles through, in seconds.
 const DELAYS: [u64; 5] = [0, 1, 2, 3, 5];
@@ -307,25 +308,35 @@ pub fn tick(key: Option<(&str, &str)>) -> TickOut {
         let cfg = s.config.clone();
         let since = s.current_since;
         let mut found: Option<(bool, u64)> = None;
-        for (stamp, srv, ply, text) in s.recent.iter().rev() {
-            if *stamp < since {
-                break;
-            }
-            if srv != server || ply != player {
-                continue;
-            }
-            let lower = text.to_lowercase();
-            let login_hit = cfg.autodetect_login
-                && lower.contains(&cfg.login_pattern.to_lowercase());
-            let register_hit = cfg.autodetect_register
-                && lower.contains(&cfg.register_pattern.to_lowercase());
-            if login_hit && s.password(server, player).is_some() {
-                found = Some((true, *stamp));
-                break;
-            }
-            if register_hit && s.password(server, player).is_none() {
-                found = Some((false, *stamp));
-                break;
+        // A saved password logs in on join with no prompt needed; the
+        // prompt scan below only matters when there is nothing saved
+        // (register). The auto-detect toggle is still the off switch.
+        let mut joined_with_password = false;
+        if cfg.autodetect_login && s.password(server, player).is_some() {
+            found = Some((true, s.tick));
+            joined_with_password = true;
+        }
+        if found.is_none() {
+            for (stamp, srv, ply, text) in s.recent.iter().rev() {
+                if *stamp < since {
+                    break;
+                }
+                if srv != server || ply != player {
+                    continue;
+                }
+                let lower = text.to_lowercase();
+                let login_hit = cfg.autodetect_login
+                    && lower.contains(&cfg.login_pattern.to_lowercase());
+                let register_hit = cfg.autodetect_register
+                    && lower.contains(&cfg.register_pattern.to_lowercase());
+                if login_hit && s.password(server, player).is_some() {
+                    found = Some((true, *stamp));
+                    break;
+                }
+                if register_hit && s.password(server, player).is_none() {
+                    found = Some((false, *stamp));
+                    break;
+                }
             }
         }
         if let Some((login, stamp)) = found {
@@ -350,11 +361,18 @@ pub fn tick(key: Option<(&str, &str)>) -> TickOut {
                 s.tick
             };
             if cfg.show_debug {
-                out.lines.push(format!(
-                    "[AutoLogin] Saw a {} prompt on {server}; sending in {}s.",
-                    if login { "login" } else { "register" },
-                    if cfg.use_delay { cfg.delay_seconds } else { 0 },
-                ));
+                out.lines.push(if joined_with_password {
+                    format!(
+                        "[AutoLogin] Saved password for {server}; logging in in {}s.",
+                        if cfg.use_delay { cfg.delay_seconds } else { 0 },
+                    )
+                } else {
+                    format!(
+                        "[AutoLogin] Saw a {} prompt on {server}; sending in {}s.",
+                        if login { "login" } else { "register" },
+                        if cfg.use_delay { cfg.delay_seconds } else { 0 },
+                    )
+                });
             }
             s.pending = Some(Pending {
                 login,
@@ -620,6 +638,45 @@ mod tests {
     }
 
     #[test]
+    fn login_on_join_with_saved_password_and_no_prompt() {
+        setup();
+        command(KEY, "autologin set hunter2").unwrap();
+        // No prompt noted at all: the saved password still logs in.
+        assert_eq!(run_ticks(25), vec!["login hunter2".to_string()]);
+    }
+
+    #[test]
+    fn no_login_on_join_when_autodetect_login_off() {
+        setup();
+        load(&|k| match k {
+            "autodetect_login" => Some("false".to_string()),
+            _ => None,
+        });
+        command(KEY, "autologin set hunter2").unwrap();
+        // The auto-detect toggle is the off switch, even with a password saved.
+        assert!(run_ticks(25).is_empty());
+    }
+
+    #[test]
+    fn register_still_needs_a_prompt() {
+        setup();
+        // No password saved and no prompt: nothing happens.
+        assert!(run_ticks(25).is_empty());
+    }
+
+    #[test]
+    fn join_login_once_per_join() {
+        setup();
+        command(KEY, "autologin set hunter2").unwrap();
+        assert_eq!(run_ticks(25), vec!["login hunter2".to_string()]);
+        // Same join: it does not send again.
+        assert!(run_ticks(25).is_empty());
+        // Leave and rejoin: it sends again.
+        assert!(tick(None).send.is_none());
+        assert_eq!(run_ticks(25), vec!["login hunter2".to_string()]);
+    }
+
+    #[test]
     fn delay_is_respected() {
         setup();
         command(KEY, "autologin set hunter2").unwrap();
@@ -672,8 +729,8 @@ mod tests {
     #[test]
     fn prompt_from_another_server_is_ignored() {
         setup();
-        command(KEY, "autologin set hunter2").unwrap();
-        note_chat("other.example.net", "Player", "please login");
+        // No password saved: only a prompt for this server could register.
+        note_chat("other.example.net", "Player", "please /register to play");
         assert!(run_ticks(25).is_empty());
     }
 
@@ -738,16 +795,20 @@ mod tests {
     #[test]
     fn patterns_and_delay_change_without_rebuilding() {
         setup();
-        command(KEY, "autologin pattern login type /login now").unwrap();
-        assert_eq!(state().config.login_pattern, "type /login now");
+        // The login pattern no longer gates login when a password is saved,
+        // so the pattern is exercised through the register prompt instead.
+        command(KEY, "autologin pattern register type /register now").unwrap();
+        assert_eq!(state().config.register_pattern, "type /register now");
         command(KEY, "autologin delay 0").unwrap();
         assert_eq!(state().config.delay_seconds, 0);
-        command(KEY, "autologin set hunter2").unwrap();
-        note_chat("play.example.net:25565", "Player", "type /login now");
-        assert_eq!(run_ticks(1), vec!["login hunter2".to_string()]);
+        note_chat("play.example.net:25565", "Player", "type /register now");
+        let sends = run_ticks(1);
+        assert_eq!(sends.len(), 1);
+        assert!(sends[0].starts_with("register "));
         // The old pattern no longer matches.
-        assert!(tick(None).send.is_none());
-        note_chat("play.example.net:25565", "Player", "please login");
+        setup();
+        command(KEY, "autologin pattern register type /register now").unwrap();
+        note_chat("play.example.net:25565", "Player", "please register");
         assert!(run_ticks(5).is_empty());
     }
 
